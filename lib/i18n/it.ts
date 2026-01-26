@@ -19,6 +19,9 @@ const it = {
   "form.difficulty.medium": "Media",
   "form.difficulty.hard": "Difficile",
   "form.puzzleCount.label": "Numero enigmi",
+  "form.sourceContent.label": "Contenuto lezione (opzionale)",
+  "form.sourceContent.placeholder":
+    "Incolla qui il testo della lezione per generare enigmi dal contenuto...",
   "form.submit": "Genera escape room",
   "home.defaultTitle": "Missione nella scuola",
   "home.defaultSubject": "Scienze",

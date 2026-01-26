@@ -3,14 +3,14 @@ import { getLocale, t } from "@/lib/i18n";
 import { RoomConfig } from "@/types";
 
 type RoomPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     title?: string;
     subject?: string;
     className?: string;
     difficulty?: string;
     puzzleCount?: string;
     lang?: string;
-  };
+  }>;
 };
 
 const clampPuzzleCount = (value: number) => {
@@ -18,10 +18,10 @@ const clampPuzzleCount = (value: number) => {
   return Math.min(8, Math.max(3, value));
 };
 
-export default function RoomPage({ searchParams }: RoomPageProps) {
+export default async function RoomPage({ searchParams }: RoomPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
   const params = new URLSearchParams();
-  if (searchParams) {
-    Object.entries(searchParams).forEach(([key, value]) => {
+  Object.entries(resolvedSearchParams).forEach(([key, value]) => {
       if (!value) return;
       if (Array.isArray(value)) {
         if (value[0]) {
@@ -30,8 +30,7 @@ export default function RoomPage({ searchParams }: RoomPageProps) {
         return;
       }
       params.set(key, value);
-    });
-  }
+  });
   const locale = getLocale(params);
   const copy =
     locale === "en"
@@ -58,16 +57,18 @@ export default function RoomPage({ searchParams }: RoomPageProps) {
           completionNewGameLabel: "Nuova partita",
         };
   const config: RoomConfig = {
-    title: searchParams?.title?.trim() || t(locale, "room.defaultTitle"),
-    subject: searchParams?.subject?.trim() || t(locale, "room.defaultSubject"),
-    className: searchParams?.className?.trim() || t(locale, "room.defaultClass"),
+    title: resolvedSearchParams.title?.trim() || t(locale, "room.defaultTitle"),
+    subject:
+      resolvedSearchParams.subject?.trim() || t(locale, "room.defaultSubject"),
+    className:
+      resolvedSearchParams.className?.trim() || t(locale, "room.defaultClass"),
     difficulty:
-      searchParams?.difficulty === "facile" ||
-      searchParams?.difficulty === "media" ||
-      searchParams?.difficulty === "difficile"
-        ? searchParams.difficulty
+      resolvedSearchParams.difficulty === "facile" ||
+      resolvedSearchParams.difficulty === "media" ||
+      resolvedSearchParams.difficulty === "difficile"
+        ? resolvedSearchParams.difficulty
         : "media",
-    puzzleCount: clampPuzzleCount(Number(searchParams?.puzzleCount)),
+    puzzleCount: clampPuzzleCount(Number(resolvedSearchParams.puzzleCount)),
   };
 
   return (

@@ -1,3 +1,4 @@
+import { generatePuzzlesFromText } from "@/lib/contentGenerator";
 import { Locale } from "@/lib/i18n";
 import { Puzzle, PuzzleType, RoomConfig } from "@/types";
 
@@ -110,6 +111,9 @@ const pickRandom = <T,>(items: T[]) =>
   items[Math.floor(Math.random() * items.length)];
 
 export const generateRoom = (config: RoomConfig, _locale: Locale): Puzzle[] => {
+  if (config.sourceContent?.trim()) {
+    return generatePuzzlesFromText(config.sourceContent, config.puzzleCount);
+  }
   const puzzles: Puzzle[] = [];
   for (let i = 0; i < config.puzzleCount; i += 1) {
     const type = pickRandom(PUZZLE_TYPES);

@@ -1,10 +1,13 @@
-## Decisioni MVP
+## MVP Decisions
 
-- Next.js App Router per deploy rapido su Vercel.
-- Frontend standalone, nessuna integrazione esterna in MVP.
-- Generazione enigmi fake per validare solo UX.
-- i18n minimale con query param `?lang=` (default it).
-- UI pulita, stampabile A4 con `window.print()`.
-- Nessun database, nessuna autenticazione, nessun backend.
-- Logica di gioco tutta client-side, semplice e deterministica.
-- Stile coerente con reference UI, senza over-engineering.
+- Next.js App Router for fast Vercel deploy.
+- Standalone frontend, no external integrations in MVP.
+- Fake puzzle generation to validate UX only.
+- Minimal i18n via `?lang=` query param (default it).
+- Clean, printable A4 layout using `window.print()`.
+- No database, no authentication, no backend in MVP.
+- Client-side gameplay logic, simple and deterministic.
+- UI consistent with reference, no over-engineering.
+- Generator signature stays extensible with optional `sourceContent`.
+- Locale-ready content strategy to avoid hardcoded growth.
+- Architecture must allow swapping heuristics with AI later.

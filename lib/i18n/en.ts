@@ -19,6 +19,9 @@ const en = {
   "form.difficulty.medium": "Medium",
   "form.difficulty.hard": "Hard",
   "form.puzzleCount.label": "Number of puzzles",
+  "form.sourceContent.label": "Lesson content (optional)",
+  "form.sourceContent.placeholder":
+    "Paste the lesson text here to generate puzzles from the content...",
   "form.submit": "Generate escape room",
   "home.defaultTitle": "Mission at school",
   "home.defaultSubject": "Science",

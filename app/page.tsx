@@ -2,15 +2,16 @@ import HomeClient from "@/components/HomeClient";
 import { getLocale } from "@/lib/i18n";
 
 type HomePageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
-  };
+  }>;
 };
 
-export default function Home({ searchParams }: HomePageProps) {
+export default async function Home({ searchParams }: HomePageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
   const params = new URLSearchParams();
-  if (searchParams?.lang) {
-    params.set("lang", searchParams.lang);
+  if (resolvedSearchParams.lang) {
+    params.set("lang", resolvedSearchParams.lang);
   }
   const locale = getLocale(params);
 

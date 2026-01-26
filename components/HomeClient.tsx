@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import LanguageToggle from "@/components/LanguageToggle";
 import { Locale, t } from "@/lib/i18n";
 import { Difficulty } from "@/types";
@@ -13,15 +13,36 @@ type HomeClientProps = {
 
 export default function HomeClient({ locale, queryString }: HomeClientProps) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const [title, setTitle] = useState(() => t(locale, "home.defaultTitle"));
   const [subject, setSubject] = useState(() => t(locale, "home.defaultSubject"));
   const [className, setClassName] = useState(() => t(locale, "home.defaultClass"));
   const [difficulty, setDifficulty] = useState<Difficulty>("media");
   const [puzzleCount, setPuzzleCount] = useState(5);
+  const [sourceContent, setSourceContent] = useState("");
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = (
+    event?:
+      | React.FormEvent<HTMLFormElement>
+      | React.MouseEvent<HTMLButtonElement>
+  ) => {
+    event?.preventDefault();
+    const formData = formRef.current ? new FormData(formRef.current) : null;
+    const rawValue = formData?.get("sourceContent");
+    const contentValue =
+      typeof rawValue === "string" ? rawValue.trim() : sourceContent.trim();
+    if (contentValue.length > 0) {
+      sessionStorage.setItem("sourceContent", contentValue);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("SAVE sourceContent len", contentValue.length);
+      }
+    } else {
+      sessionStorage.removeItem("sourceContent");
+      if (process.env.NODE_ENV !== "production") {
+        console.log("SAVE sourceContent len", 0);
+      }
+    }
     const params = new URLSearchParams({
       title,
       subject,
@@ -68,6 +89,7 @@ export default function HomeClient({ locale, queryString }: HomeClientProps) {
           <form
             onSubmit={handleSubmit}
             className="mt-8 grid gap-6 md:grid-cols-2"
+            ref={formRef}
           >
             <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
               {t(locale, "form.title.label")}
@@ -132,9 +154,21 @@ export default function HomeClient({ locale, queryString }: HomeClientProps) {
               </div>
             </label>
 
+            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700 md:col-span-2">
+              {t(locale, "form.sourceContent.label")}
+              <textarea
+                name="sourceContent"
+                className="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
+                value={sourceContent}
+                onChange={(event) => setSourceContent(event.target.value)}
+                placeholder={t(locale, "form.sourceContent.placeholder")}
+              />
+            </label>
+
             <div className="md:col-span-2">
               <button
                 type="submit"
+                onClick={handleSubmit}
                 className="w-full rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500"
               >
                 {t(locale, "form.submit")}

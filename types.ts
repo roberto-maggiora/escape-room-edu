@@ -6,6 +6,7 @@ export type RoomConfig = {
   className: string;
   difficulty: Difficulty;
   puzzleCount: number;
+  sourceContent?: string;
 };
 
 export type PuzzleType = "quiz" | "code" | "keyword" | "riddle" | "logic" | "path";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CompletionScreen from "@/components/CompletionScreen";
 import LanguageToggle from "@/components/LanguageToggle";
 import MissionCard from "@/components/MissionCard";
@@ -43,9 +43,12 @@ export default function RoomExperience({
   completionPrintLabel,
   completionNewGameLabel,
 }: RoomExperienceProps) {
+  const [sourceContent, setSourceContent] = useState<string | undefined>(
+    undefined
+  );
   const puzzles = useMemo<Puzzle[]>(
-    () => generateRoom(config, locale),
-    [config, locale]
+    () => generateRoom({ ...config, sourceContent }, locale),
+    [config, locale, sourceContent]
   );
   const [answers, setAnswers] = useState<string[]>(
     () => puzzles.map(() => "")
@@ -54,6 +57,26 @@ export default function RoomExperience({
     () => puzzles.map(() => "idle")
   );
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("sourceContent");
+    if (stored && stored.trim().length > 0) {
+      setSourceContent(stored.trim());
+      if (process.env.NODE_ENV !== "production") {
+        console.log("LOAD sourceContent len", stored.trim().length);
+      }
+      return;
+    }
+    setSourceContent(undefined);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("LOAD sourceContent len", 0);
+    }
+  }, []);
+
+  useEffect(() => {
+    setAnswers(puzzles.map(() => ""));
+    setResults(puzzles.map(() => "idle"));
+  }, [puzzles]);
 
   const completedCount = results.filter((value) => value === "correct").length;
   const isComplete = puzzles.length > 0 && completedCount === puzzles.length;
