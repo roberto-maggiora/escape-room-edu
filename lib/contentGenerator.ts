@@ -3,6 +3,14 @@ import { Puzzle } from "@/types";
 const normalizeText = (text: string) =>
   text.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
 
+const normalize = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const splitSentences = (text: string) =>
   normalizeText(text)
     .split(/[\.\!\?]+/)
@@ -12,7 +20,7 @@ const splitSentences = (text: string) =>
 const getWords = (text: string) =>
   normalizeText(text)
     .match(/[A-Za-zÀ-ÿ0-9]+/g)
-    ?.map((word) => word.toLowerCase()) ?? [];
+    ?.map((word) => normalize(word)) ?? [];
 
 const STOPWORDS = new Set([
   "il",
@@ -57,6 +65,16 @@ const STOPWORDS = new Set([
   "più",
 ]);
 
+const GENERIC_TERMS = new Set([
+  "nutrimento",
+  "cosa",
+  "processo",
+  "sistema",
+  "parte",
+  "modo",
+  "energia",
+]);
+
 const NOUN_SUFFIXES = [
   "zione",
   "sione",
@@ -94,30 +112,58 @@ const buildFrequencyMap = (words: string[]) => {
 const extractKeywords = (words: string[]) =>
   words.filter(
     (word) =>
-      word.length >= 6 && !STOPWORDS.has(word) && isNounLike(word)
+      word.length >= 6 &&
+      !STOPWORDS.has(word) &&
+      !GENERIC_TERMS.has(word) &&
+      isNounLike(word)
   );
 
-const pickMostFrequentKeyword = (candidates: string[], counts: Map<string, number>) => {
+const scoreKeyword = (
+  keyword: string,
+  counts: Map<string, number>,
+  firstParagraphWords: Set<string>,
+  titleWords: Set<string>
+) => {
+  let score = (counts.get(keyword) ?? 0) * 2;
+  if (titleWords.has(keyword)) score += 5;
+  if (firstParagraphWords.has(keyword)) score += 3;
+  if (isNounLike(keyword)) score += 2;
+  if (keyword.length >= 9) score += 1;
+  return score;
+};
+
+const pickBestKeyword = (
+  candidates: string[],
+  counts: Map<string, number>,
+  firstParagraphWords: Set<string>,
+  titleWords: Set<string>
+) => {
   if (candidates.length === 0) return undefined;
   return [...new Set(candidates)]
     .sort((a, b) => {
-      const freqDiff = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
-      if (freqDiff !== 0) return freqDiff;
-      if (b.length !== a.length) return b.length - a.length;
+      const scoreDiff =
+        scoreKeyword(b, counts, firstParagraphWords, titleWords) -
+        scoreKeyword(a, counts, firstParagraphWords, titleWords);
+      if (scoreDiff !== 0) return scoreDiff;
       return a.localeCompare(b);
     })[0];
 };
 
-const toInitials = (sentence: string) =>
-  sentence
-    .split(/\s+/)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
+const scoreKeywords = (
+  candidates: string[],
+  counts: Map<string, number>,
+  firstParagraphWords: Set<string>,
+  titleWords: Set<string>
+) =>
+  [...new Set(candidates)].map((keyword) => ({
+    keyword,
+    score: scoreKeyword(keyword, counts, firstParagraphWords, titleWords),
+  }));
 
-const extractDefinition = (sentenceLower: string) => {
-  const match = sentenceLower.match(
-    /^(.+?)\s+(è|sono|serve|produce|permette|usa|trasforma)\s+(.+)$/
+const extractDefinition = (sentence: string) => {
+  const normalized = normalize(sentence);
+  const match = normalized.match(
+    /^(.+?)\s+(e|sono|serve|produce|permette|usa|trasforma)\s+(.+)$/
   );
   if (!match) return undefined;
   const subject = match[1].trim();
@@ -126,7 +172,7 @@ const extractDefinition = (sentenceLower: string) => {
   const subjectKeyword = subjectWords[subjectWords.length - 1];
   return {
     subject: subjectKeyword,
-    definition,
+    definition: sentence.trim().replace(/\s+/g, " "),
   };
 };
 
@@ -136,18 +182,39 @@ const buildBlankSentence = (sentence: string, keyword: string) => {
   return sentence.replace(regex, "______");
 };
 
-const extractCauseWord = (sentenceLower: string, keyword: string) => {
-  const verbMatch = sentenceLower.match(
-    /(produce|permette|usa|trasforma)\s+(.+)$/
-  );
-  if (!verbMatch) return undefined;
-  const tail = verbMatch[2];
-  const tailWords = tail.split(/\s+/).map((word) => word.replace(/[^\wÀ-ÿ]/g, ""));
-  const candidate = tailWords.find(
-    (word) => word && word !== keyword && !STOPWORDS.has(word)
-  );
-  return candidate;
+const PATH_DEPENDENCIES = [
+  "luce",
+  "energia solare",
+  "acqua",
+  "anidride carbonica",
+  "clorofilla",
+];
+
+const extractPathDependency = (text: string) => {
+  const normalized = normalize(text);
+  for (const dependency of PATH_DEPENDENCIES) {
+    if (normalized.includes(dependency)) {
+      return dependency;
+    }
+  }
+  return undefined;
 };
+
+const truncateExcerpt = (text: string, maxLength: number) => {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}…`;
+};
+
+const buildExcerpt = (sentence: string) =>
+  `Estratto: ${truncateExcerpt(sentence, 160)}`;
+
+const buildDefinitionParaphrase = (definition: string) =>
+  definition
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .slice(0, 12)
+    .join(" ");
+
 
 export function generatePuzzlesFromText(
   text: string,
@@ -155,31 +222,57 @@ export function generatePuzzlesFromText(
 ): Puzzle[] {
   const sentencesOriginal = splitSentences(text);
   const sentencesLower = sentencesOriginal.map((sentence) =>
-    sentence.toLowerCase()
+    normalize(sentence)
   );
   const words = getWords(text);
   const wordCounts = buildFrequencyMap(words);
   const candidates = extractKeywords(words);
 
   const fallbackSentence =
-    sentencesOriginal[0] ?? "Il laboratorio è in blocco e serve una soluzione rapida.";
+    sentencesOriginal[0] ??
+    "Il laboratorio è in blocco e serve una soluzione rapida.";
+
+  const firstParagraph =
+    text.split(/\n\s*\n/)[0] ?? sentencesOriginal[0] ?? "";
+  const firstParagraphWords = new Set(getWords(firstParagraph));
+  const titleCandidate = sentencesOriginal[0] ?? "";
+  const titleWords = new Set(getWords(titleCandidate));
 
   // Heuristic 1: main keyword (most frequent meaningful concept).
   const mainKeyword =
-    pickMostFrequentKeyword(candidates, wordCounts) ??
-    words.find((word) => word.length >= 6 && !STOPWORDS.has(word)) ??
-    "processo";
+    pickBestKeyword(candidates, wordCounts, firstParagraphWords, titleWords) ??
+    words.find(
+      (word) =>
+        word.length >= 6 &&
+        !STOPWORDS.has(word) &&
+        !GENERIC_TERMS.has(word)
+    ) ??
+    "fotosintesi";
+
+  const scoredKeywords = scoreKeywords(
+    candidates,
+    wordCounts,
+    firstParagraphWords,
+    titleWords
+  ).sort((a, b) => b.score - a.score);
+  const topKeyword = scoredKeywords[0]?.keyword ?? mainKeyword;
+  const secondScore = scoredKeywords[1]?.score ?? 0;
+  const topScore = scoredKeywords[0]?.score ?? 0;
 
   // Heuristic 2: definition match (X è/serve/permette...).
-  const definitionMatch = sentencesLower
+  const definitionMatch = sentencesOriginal
     .map((sentence) => extractDefinition(sentence))
-    .find((result) => result && result.subject.length >= 4);
+    .find(
+      (result) =>
+        result &&
+        result.subject.length >= 4 &&
+        !GENERIC_TERMS.has(normalize(result.subject))
+    );
 
   const definitionSubject =
-    definitionMatch?.subject ?? mainKeyword;
+    normalize(definitionMatch?.subject ?? mainKeyword);
   const definitionExcerpt =
-    definitionMatch?.definition.split(/\s+/).slice(0, 10).join(" ") ??
-    fallbackSentence;
+    definitionMatch?.definition ?? fallbackSentence;
 
   // Heuristic 3: code from knowledge (length of the main keyword).
   const codeAnswer = String(mainKeyword.length);
@@ -194,47 +287,96 @@ export function generatePuzzlesFromText(
     `______ ${sentenceForBlank}`;
 
   // Heuristic 5: cause-effect from verb sentences.
-  const causeSentenceIndex = sentencesLower.findIndex((sentence) =>
-    VERB_MARKERS.some((marker) => sentence.includes(marker))
-  );
-  const causeSentenceLower =
-    causeSentenceIndex >= 0 ? sentencesLower[causeSentenceIndex] : "";
-  const causeWord =
-    extractCauseWord(causeSentenceLower, mainKeyword) ??
-    candidates.find((word) => word !== mainKeyword) ??
-    "energia";
+  const pathDependency =
+    extractPathDependency(text) ??
+    extractPathDependency(sentencesOriginal.join(" ")) ??
+    "luce";
+
+  const keywordSentence =
+    sentencesOriginal.find((sentence, index) =>
+      sentencesLower[index]?.includes(topKeyword)
+    ) ?? fallbackSentence;
+  const keywordExcerpt = buildExcerpt(keywordSentence);
+  const isTopScored = topScore >= secondScore + 1;
+  const keywordQuestion = isTopScored
+    ? "Qual è il processo/tema principale?"
+    : "Trova una parola chiave nel testo (presente nell’estratto).";
+  const keywordAnswer = isTopScored ? topKeyword : topKeyword;
+
+  const keywordPuzzle: Puzzle = {
+    id: "p1",
+    type: "keyword",
+    question: `${keywordQuestion}\n${keywordExcerpt}`,
+    answer: keywordAnswer,
+  };
+
+  const definitionSentence =
+    definitionMatch?.definition ?? fallbackSentence;
+  const definitionParaphrase = buildDefinitionParaphrase(definitionSentence);
+  const definitionPuzzle: Puzzle = definitionMatch
+    ? {
+        id: "p2",
+        type: "logic",
+        question: `Come si chiama il processo che ${definitionParaphrase}?\n${buildExcerpt(
+          definitionSentence
+        )}`,
+        answer: definitionSubject,
+      }
+    : {
+        id: "p2",
+        type: "quiz",
+        question: `Quale termine descrive meglio: ${fallbackSentence}\n${buildExcerpt(
+          fallbackSentence
+        )}`,
+        options: [mainKeyword, "materia", "strumento", "trasformazione"],
+        answer: mainKeyword,
+      };
+
+  const codePuzzle: Puzzle = {
+    id: "p3",
+    type: "code",
+    question: `Il codice è il numero di lettere della parola "${mainKeyword}".\n${keywordExcerpt}`,
+    answer: codeAnswer,
+  };
+
+  const blankPuzzle: Puzzle =
+    blankSentence && blankSentence.includes("______")
+      ? {
+          id: "p4",
+          type: "quiz",
+          question: `${blankSentence}\n${buildExcerpt(sentenceForBlank)}`,
+          answer: mainKeyword,
+        }
+      : {
+          id: "p4",
+          type: "quiz",
+          question: `Completa il concetto principale del testo.\n${buildExcerpt(
+            fallbackSentence
+          )}`,
+          options: [mainKeyword, "struttura", "elemento", "risorsa"],
+          answer: mainKeyword,
+        };
+
+  const hasExplicitDependency = extractPathDependency(text) !== undefined;
+  const pathPuzzle: Puzzle = hasExplicitDependency
+    ? {
+        id: "p5",
+        type: "path",
+        question: `Senza ____ non può avvenire la fotosintesi.\n${buildExcerpt(
+          sentencesOriginal.find((sentence) =>
+            normalize(sentence).includes(pathDependency)
+          ) ?? fallbackSentence
+        )}`,
+        answer: pathDependency,
+      }
+    : keywordPuzzle;
 
   const puzzles: Puzzle[] = [
-    {
-      id: "p1",
-      type: "keyword",
-      question: "Qual è il processo/concetto principale descritto nel testo?",
-      answer: mainKeyword,
-    },
-    {
-      id: "p2",
-      type: "riddle",
-      question: `Come si chiama ciò che: ${definitionExcerpt} ?`,
-      answer: definitionSubject,
-    },
-    {
-      id: "p3",
-      type: "code",
-      question: `Il codice è il numero di lettere della parola "${mainKeyword}".`,
-      answer: codeAnswer,
-    },
-    {
-      id: "p4",
-      type: "logic",
-      question: blankSentence,
-      answer: mainKeyword,
-    },
-    {
-      id: "p5",
-      type: "path",
-      question: `Senza ______ ${mainKeyword} non può avvenire.`,
-      answer: causeWord,
-    },
+    keywordPuzzle,
+    definitionPuzzle,
+    codePuzzle,
+    blankPuzzle,
+    pathPuzzle,
   ];
 
   const total = Math.max(1, count);

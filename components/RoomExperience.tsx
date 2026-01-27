@@ -34,6 +34,14 @@ const formatTime = (totalSeconds: number) => {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
+const normalizeAnswer = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export default function RoomExperience({
   config,
   locale,
@@ -127,6 +135,17 @@ export default function RoomExperience({
     if (!hasStarted || index !== activeIndex) return;
     const puzzle = puzzles[index];
     const userAnswer = answers[index] ?? "";
+    const expectedNorm = normalizeAnswer(puzzle.answer);
+    const userNorm = normalizeAnswer(userAnswer);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG CHECK", {
+        type: puzzle.type,
+        expected: puzzle.answer,
+        expectedNorm,
+        userAnswer,
+        userNorm,
+      });
+    }
     const isCorrect =
       userAnswer.trim().toLowerCase() === puzzle.answer.trim().toLowerCase();
     setResults((prev) =>
