@@ -4,3 +4,6 @@
 - Input: pasted text (MVP+1), file upload (txt/docx), PDF (later).
 - Notes: content extraction/parsing, no AI for initial version, privacy considerations.
 - Path: start with pasted text only, then expand input types.
+
+### Gameplay v1.2 (implemented)
+- Mission briefing overlay, HUD, sequential unlock, hints, score.

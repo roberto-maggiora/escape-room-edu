@@ -5,6 +5,7 @@ type CompletionScreenProps = {
   subtitle: string;
   timeLabel: string;
   time: string;
+  extraInfo?: string;
   printLabel: string;
   newGameLabel: string;
   onPrint: () => void;
@@ -16,6 +17,7 @@ export default function CompletionScreen({
   subtitle,
   timeLabel,
   time,
+  extraInfo,
   printLabel,
   newGameLabel,
   onPrint,
@@ -28,6 +30,9 @@ export default function CompletionScreen({
       <div className="mt-6 rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
         {timeLabel}: {time}
       </div>
+      {extraInfo && (
+        <div className="mt-3 text-sm text-slate-600">{extraInfo}</div>
+      )}
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
         <button
           type="button"

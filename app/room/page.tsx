@@ -1,5 +1,6 @@
 import RoomExperience from "@/components/RoomExperience";
 import { getLocale, t } from "@/lib/i18n";
+import { roomCopy } from "@/lib/roomCopy";
 import { RoomConfig } from "@/types";
 
 type RoomPageProps = {
@@ -32,30 +33,7 @@ export default async function RoomPage({ searchParams }: RoomPageProps) {
       params.set(key, value);
   });
   const locale = getLocale(params);
-  const copy =
-    locale === "en"
-      ? {
-          missionTitle: "Mission",
-          missionText:
-            "The lab is locked down. Solve the puzzles to restore the power.",
-          timerLabel: "Time",
-          completionTitle: "Well done!",
-          completionSubtitle: "You restored the lab and completed the escape room.",
-          completionTimeLabel: "Time",
-          completionPrintLabel: "Print PDF",
-          completionNewGameLabel: "New game",
-        }
-      : {
-          missionTitle: "Missione",
-          missionText:
-            "Il laboratorio è in blocco. Risolvi gli enigmi per ripristinare l'energia.",
-          timerLabel: "Tempo",
-          completionTitle: "Complimenti!",
-          completionSubtitle: "Hai completato l'escape room e riattivato il laboratorio.",
-          completionTimeLabel: "Tempo",
-          completionPrintLabel: "Esporta PDF",
-          completionNewGameLabel: "Nuova partita",
-        };
+  const copy = roomCopy[locale];
   const config: RoomConfig = {
     title: resolvedSearchParams.title?.trim() || t(locale, "room.defaultTitle"),
     subject:
@@ -80,7 +58,7 @@ export default async function RoomPage({ searchParams }: RoomPageProps) {
           queryString={params.toString()}
           missionTitle={copy.missionTitle}
           missionText={copy.missionText}
-          timerLabel={copy.timerLabel}
+          timerLabel={copy.hudTimeLabel}
           completionTitle={copy.completionTitle}
           completionSubtitle={copy.completionSubtitle}
           completionTimeLabel={copy.completionTimeLabel}

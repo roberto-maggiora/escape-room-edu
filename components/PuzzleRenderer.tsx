@@ -7,22 +7,40 @@ type PuzzleRendererProps = {
   puzzle: Puzzle;
   index: number;
   locale: Locale;
-  isLocked: boolean;
+  status: "active" | "locked" | "completed";
   answer: string;
   result: "idle" | "correct" | "wrong";
   onAnswerChange: (value: string) => void;
   onCheck: () => void;
+  onHint: () => void;
+  hintsUsed: number;
+  maxHints: number;
+  hintText: string;
+  showHint: boolean;
+  lockedLabel: string;
+  completedLabel: string;
+  hintLabel: string;
+  flash: boolean;
 };
 
 export default function PuzzleRenderer({
   puzzle,
   index,
   locale,
-  isLocked,
+  status,
   answer,
   result,
   onAnswerChange,
   onCheck,
+  onHint,
+  hintsUsed,
+  maxHints,
+  hintText,
+  showHint,
+  lockedLabel,
+  completedLabel,
+  hintLabel,
+  flash,
 }: PuzzleRendererProps) {
   const puzzleTypeLabel = () => {
     if (puzzle.type === "quiz") {
@@ -45,31 +63,49 @@ export default function PuzzleRenderer({
 
   const isQuiz = puzzle.type === "quiz";
   const isCode = puzzle.type === "code";
+  const isLocked = status === "locked";
+  const isCompleted = status === "completed";
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm print:border-slate-300 print:shadow-none">
+    <div
+      className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm print:border-slate-300 print:shadow-none ${
+        result === "correct" ? "ring-2 ring-emerald-200 bg-emerald-50/40" : ""
+      } ${flash ? "animate-pulse" : ""}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
             {t(locale, "room.puzzleLabel", { index: index + 1 })} ·{" "}
             {puzzleTypeLabel()}
           </p>
-          {!isLocked && (
+          {status === "active" && (
             <h2 className="mt-2 text-lg font-semibold text-slate-900">
               {puzzle.question}
             </h2>
+          )}
+          {isLocked && (
+            <p className="mt-2 text-sm text-slate-500">
+              {lockedLabel}
+            </p>
+          )}
+          {isCompleted && (
+            <p className="mt-2 text-sm font-semibold text-emerald-600">
+              {completedLabel}
+            </p>
           )}
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
           {isLocked
             ? "🔒"
+            : isCompleted
+              ? "🔓"
             : isQuiz
               ? t(locale, "room.puzzleBadge.multipleChoice")
               : t(locale, "room.puzzleBadge.freeAnswer")}
         </span>
       </div>
 
-      {isLocked ? null : (
+      {status === "active" ? (
         <>
           {isQuiz && puzzle.options && (
             <ul className="mt-3 grid gap-2 text-sm text-slate-600">
@@ -100,7 +136,19 @@ export default function PuzzleRenderer({
             >
               {t(locale, "room.check")}
             </button>
+            <button
+              type="button"
+              onClick={onHint}
+              disabled={hintsUsed >= maxHints}
+              className="no-print rounded-full border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:border-amber-300 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {hintLabel} (-20s) {hintsUsed}/{maxHints}
+            </button>
           </div>
+
+          {showHint && (
+            <p className="mt-3 text-sm text-amber-700">{hintText}</p>
+          )}
 
           <div className="print-only mt-4 hidden text-sm text-slate-600 print:block">
             {t(locale, "room.printAnswerLine")}
@@ -117,7 +165,7 @@ export default function PuzzleRenderer({
             </p>
           )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }
