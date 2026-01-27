@@ -9,7 +9,15 @@ export type RoomConfig = {
   sourceContent?: string;
 };
 
-export type PuzzleType = "quiz" | "code" | "keyword" | "riddle" | "logic" | "path";
+export type PuzzleType =
+  | "quiz"
+  | "code"
+  | "keyword"
+  | "riddle"
+  | "logic"
+  | "path"
+  | "match"
+  | "click-word";
 
 export type Puzzle = {
   id: string;
@@ -17,4 +25,6 @@ export type Puzzle = {
   question: string;
   answer: string;
   options?: string[];
+  matchPairs?: { left: string; right: string }[];
+  clickWords?: string[];
 };

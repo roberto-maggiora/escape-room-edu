@@ -70,6 +70,7 @@ export default function RoomExperience({
     () => puzzles.map(() => false)
   );
   const [flashIndex, setFlashIndex] = useState<number | null>(null);
+  const [activeIndexOverride, setActiveIndexOverride] = useState<number | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("sourceContent");
@@ -109,7 +110,8 @@ export default function RoomExperience({
     return () => clearInterval(interval);
   }, [hasStarted, isComplete]);
 
-  const activeIndex = Math.min(completedCount, Math.max(puzzles.length - 1, 0));
+  const activeIndex =
+    activeIndexOverride ?? Math.min(completedCount, Math.max(puzzles.length - 1, 0));
   const totalHintsUsed = hintsUsed.reduce((sum, value) => sum + value, 0);
   const score = Math.max(remainingSeconds - totalHintsUsed * 15, 0);
 
@@ -135,6 +137,8 @@ export default function RoomExperience({
     if (isCorrect) {
       setFlashIndex(index);
       window.setTimeout(() => setFlashIndex(null), 600);
+      setActiveIndexOverride(index);
+      window.setTimeout(() => setActiveIndexOverride(null), 500);
     }
   };
 
@@ -196,6 +200,15 @@ export default function RoomExperience({
   const missionLines = missionText.split("\n");
   const isUrgent = remainingSeconds <= 30;
 
+  useEffect(() => {
+    if (!hasStarted) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    const input = document.querySelector<HTMLInputElement>(
+      "[data-puzzle-input=\"true\"]"
+    );
+    input?.focus();
+  }, [activeIndex, hasStarted]);
+
   return (
     <div className="space-y-6">
       {!hasStarted && (
@@ -236,7 +249,17 @@ export default function RoomExperience({
       )}
 
       <div className="sticky top-4 z-10 print:hidden">
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="mb-3 h-2 w-full rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-emerald-400 transition-all duration-300"
+              style={{
+                width: `${Math.round(
+                  (completedCount / Math.max(puzzles.length, 1)) * 100
+                )}%`,
+              }}
+            />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div
               className={`rounded-full px-4 py-2 text-sm font-semibold ${
@@ -314,40 +337,39 @@ export default function RoomExperience({
         />
       ) : (
         <section className="grid gap-4">
-          {puzzles.map((puzzle, index) => {
-            const status =
-              index < completedCount
-                ? "completed"
-                : index === activeIndex
-                  ? "active"
-                  : "locked";
-            return (
-              <PuzzleRenderer
-                key={puzzle.id}
-                puzzle={puzzle}
-                index={index}
-                locale={locale}
-                status={status}
-                answer={answers[index]}
-                result={results[index]}
-                onAnswerChange={(value) =>
-                  setAnswers((prev) =>
-                    prev.map((entry, i) => (i === index ? value : entry))
-                  )
-                }
-                onCheck={() => handleCheck(index)}
-                onHint={() => handleHint(index)}
-                hintsUsed={hintsUsed[index] ?? 0}
-                maxHints={MAX_HINTS_PER_PUZZLE}
-                hintText={hintText(puzzle)}
-                showHint={showHints[index] ?? false}
-                lockedLabel={copy.lockedLabel}
-                completedLabel={copy.completedLabel}
-                hintLabel={copy.hintLabel}
-                flash={flashIndex === index}
-              />
-            );
-          })}
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            {puzzles.map((puzzle, index) => (
+              <span key={puzzle.id}>
+                {index < completedCount ? "🔓" : "🔒"}
+              </span>
+            ))}
+          </div>
+          {puzzles[activeIndex] && (
+            <PuzzleRenderer
+              key={puzzles[activeIndex].id}
+              puzzle={puzzles[activeIndex]}
+              index={activeIndex}
+              locale={locale}
+              status="active"
+              answer={answers[activeIndex]}
+              result={results[activeIndex]}
+              onAnswerChange={(value) =>
+                setAnswers((prev) =>
+                  prev.map((entry, i) => (i === activeIndex ? value : entry))
+                )
+              }
+              onCheck={() => handleCheck(activeIndex)}
+              onHint={() => handleHint(activeIndex)}
+              hintsUsed={hintsUsed[activeIndex] ?? 0}
+              maxHints={MAX_HINTS_PER_PUZZLE}
+              hintText={hintText(puzzles[activeIndex])}
+              showHint={showHints[activeIndex] ?? false}
+              lockedLabel={copy.lockedLabel}
+              completedLabel={copy.completedLabel}
+              hintLabel={copy.hintLabel}
+              flash={flashIndex === activeIndex}
+            />
+          )}
         </section>
       )}
     </div>

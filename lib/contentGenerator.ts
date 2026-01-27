@@ -204,6 +204,22 @@ export function generatePuzzlesFromText(
     candidates.find((word) => word !== mainKeyword) ??
     "energia";
 
+  const definitionPairs = sentencesLower
+    .map((sentence) => extractDefinition(sentence))
+    .filter((item): item is { subject: string; definition: string } => Boolean(item))
+    .slice(0, 2)
+    .map((item) => ({
+      left: item.subject,
+      right: item.definition.split(/\s+/).slice(0, 4).join(" "),
+    }))
+    .filter((pair) => pair.left.length > 0 && pair.right.length > 0);
+
+  const clickSentence =
+    sentencesOriginal.find((sentence, index) =>
+      sentencesLower[index]?.includes(mainKeyword)
+    ) ?? fallbackSentence;
+  const clickWords = clickSentence.split(/\s+/);
+
   const puzzles: Puzzle[] = [
     {
       id: "p1",
@@ -213,9 +229,15 @@ export function generatePuzzlesFromText(
     },
     {
       id: "p2",
-      type: "riddle",
-      question: `Come si chiama ciò che: ${definitionExcerpt} ?`,
-      answer: definitionSubject,
+      type:
+        definitionPairs.length >= 2 ? "match" : "click-word",
+      question:
+        definitionPairs.length >= 2
+          ? "Abbina i termini alle definizioni."
+          : clickSentence,
+      answer: definitionPairs.length >= 2 ? "matched" : mainKeyword,
+      matchPairs: definitionPairs.length >= 2 ? definitionPairs : undefined,
+      clickWords: definitionPairs.length >= 2 ? undefined : clickWords,
     },
     {
       id: "p3",
