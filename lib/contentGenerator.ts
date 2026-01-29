@@ -176,10 +176,60 @@ const extractDefinition = (sentence: string) => {
   };
 };
 
+const stripLeadingArticles = (value: string) =>
+  value.replace(/^(la|il|lo|l|i|gli|le|un|una)\s+/i, "").trim();
+
+const extractMainTopic = (text: string) => {
+  const normalizedText = normalize(text);
+  if (normalizedText.includes("fotosintesi clorofilliana")) {
+    return "fotosintesi clorofilliana";
+  }
+  if (normalizedText.includes("fotosintesi")) {
+    return "fotosintesi";
+  }
+  const firstParagraph = text.split(/\n\s*\n/)[0] ?? text;
+  const firstSentences = splitSentences(firstParagraph);
+  for (const sentence of firstSentences) {
+    const normalizedSentence = normalize(sentence);
+    const matchIt = normalizedSentence.match(
+      /^(?:la|il|lo|l|i|gli|le|un|una)\s+(.+?)\s+e\s+/
+    );
+    if (matchIt) {
+      const candidate = stripLeadingArticles(matchIt[1]);
+      if (candidate && !GENERIC_TERMS.has(candidate)) {
+        return candidate;
+      }
+    }
+    const matchEn = normalizedSentence.match(
+      /^(.+?)\s+is\s+(?:a|an|the)\s+/
+    );
+    if (matchEn) {
+      const candidate = stripLeadingArticles(matchEn[1]);
+      if (candidate && !GENERIC_TERMS.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+};
+
 const buildBlankSentence = (sentence: string, keyword: string) => {
   const regex = new RegExp(`\\b${keyword}\\b`, "i");
   if (!regex.test(sentence)) return undefined;
   return sentence.replace(regex, "______");
+};
+
+const extractCauseWord = (sentenceLower: string, keyword: string) => {
+  const verbMatch = sentenceLower.match(
+    /(produce|permette|usa|trasforma)\s+(.+)$/
+  );
+  if (!verbMatch) return undefined;
+  const tail = verbMatch[2];
+  const tailWords = tail.split(/\s+/).map((word) => word.replace(/[^\wÀ-ÿ]/g, ""));
+  const candidate = tailWords.find(
+    (word) => word && word !== keyword && !STOPWORDS.has(word)
+  );
+  return candidate;
 };
 
 const PATH_DEPENDENCIES = [
@@ -241,23 +291,9 @@ export function generatePuzzlesFromText(
   // Heuristic 1: main keyword (most frequent meaningful concept).
   const mainKeyword =
     pickBestKeyword(candidates, wordCounts, firstParagraphWords, titleWords) ??
-    words.find(
-      (word) =>
-        word.length >= 6 &&
-        !STOPWORDS.has(word) &&
-        !GENERIC_TERMS.has(word)
-    ) ??
-    "fotosintesi";
-
-  const scoredKeywords = scoreKeywords(
-    candidates,
-    wordCounts,
-    firstParagraphWords,
-    titleWords
-  ).sort((a, b) => b.score - a.score);
-  const topKeyword = scoredKeywords[0]?.keyword ?? mainKeyword;
-  const secondScore = scoredKeywords[1]?.score ?? 0;
-  const topScore = scoredKeywords[0]?.score ?? 0;
+    words.find((word) => word.length >= 6 && !STOPWORDS.has(word)) ??
+    "processo";
+  const mainTopic = extractMainTopic(text) ?? mainKeyword;
 
   // Heuristic 2: definition match (X è/serve/permette...).
   const definitionMatch = sentencesOriginal
@@ -287,96 +323,68 @@ export function generatePuzzlesFromText(
     `______ ${sentenceForBlank}`;
 
   // Heuristic 5: cause-effect from verb sentences.
-  const pathDependency =
-    extractPathDependency(text) ??
-    extractPathDependency(sentencesOriginal.join(" ")) ??
-    "luce";
+  const causeSentenceIndex = sentencesLower.findIndex((sentence) =>
+    VERB_MARKERS.some((marker) => sentence.includes(marker))
+  );
+  const causeSentenceLower =
+    causeSentenceIndex >= 0 ? sentencesLower[causeSentenceIndex] : "";
+  const causeWord =
+    extractCauseWord(causeSentenceLower, mainKeyword) ??
+    candidates.find((word) => word !== mainKeyword) ??
+    "energia";
 
-  const keywordSentence =
+  const definitionPairs = sentencesLower
+    .map((sentence) => extractDefinition(sentence))
+    .filter((item): item is { subject: string; definition: string } => Boolean(item))
+    .slice(0, 2)
+    .map((item) => ({
+      left: item.subject,
+      right: item.definition.split(/\s+/).slice(0, 4).join(" "),
+    }))
+    .filter((pair) => pair.left.length > 0 && pair.right.length > 0);
+
+  const clickSentence =
     sentencesOriginal.find((sentence, index) =>
-      sentencesLower[index]?.includes(topKeyword)
+      sentencesLower[index]?.includes(mainKeyword)
     ) ?? fallbackSentence;
-  const keywordExcerpt = buildExcerpt(keywordSentence);
-  const isTopScored = topScore >= secondScore + 1;
-  const keywordQuestion = isTopScored
-    ? "Qual è il processo/tema principale?"
-    : "Trova una parola chiave nel testo (presente nell’estratto).";
-  const keywordAnswer = isTopScored ? topKeyword : topKeyword;
-
-  const keywordPuzzle: Puzzle = {
-    id: "p1",
-    type: "keyword",
-    question: `${keywordQuestion}\n${keywordExcerpt}`,
-    answer: keywordAnswer,
-  };
-
-  const definitionSentence =
-    definitionMatch?.definition ?? fallbackSentence;
-  const definitionParaphrase = buildDefinitionParaphrase(definitionSentence);
-  const definitionPuzzle: Puzzle = definitionMatch
-    ? {
-        id: "p2",
-        type: "logic",
-        question: `Come si chiama il processo che ${definitionParaphrase}?\n${buildExcerpt(
-          definitionSentence
-        )}`,
-        answer: definitionSubject,
-      }
-    : {
-        id: "p2",
-        type: "quiz",
-        question: `Quale termine descrive meglio: ${fallbackSentence}\n${buildExcerpt(
-          fallbackSentence
-        )}`,
-        options: [mainKeyword, "materia", "strumento", "trasformazione"],
-        answer: mainKeyword,
-      };
-
-  const codePuzzle: Puzzle = {
-    id: "p3",
-    type: "code",
-    question: `Il codice è il numero di lettere della parola "${mainKeyword}".\n${keywordExcerpt}`,
-    answer: codeAnswer,
-  };
-
-  const blankPuzzle: Puzzle =
-    blankSentence && blankSentence.includes("______")
-      ? {
-          id: "p4",
-          type: "quiz",
-          question: `${blankSentence}\n${buildExcerpt(sentenceForBlank)}`,
-          answer: mainKeyword,
-        }
-      : {
-          id: "p4",
-          type: "quiz",
-          question: `Completa il concetto principale del testo.\n${buildExcerpt(
-            fallbackSentence
-          )}`,
-          options: [mainKeyword, "struttura", "elemento", "risorsa"],
-          answer: mainKeyword,
-        };
-
-  const hasExplicitDependency = extractPathDependency(text) !== undefined;
-  const pathPuzzle: Puzzle = hasExplicitDependency
-    ? {
-        id: "p5",
-        type: "path",
-        question: `Senza ____ non può avvenire la fotosintesi.\n${buildExcerpt(
-          sentencesOriginal.find((sentence) =>
-            normalize(sentence).includes(pathDependency)
-          ) ?? fallbackSentence
-        )}`,
-        answer: pathDependency,
-      }
-    : keywordPuzzle;
+  const clickWords = clickSentence.split(/\s+/);
 
   const puzzles: Puzzle[] = [
-    keywordPuzzle,
-    definitionPuzzle,
-    codePuzzle,
-    blankPuzzle,
-    pathPuzzle,
+    {
+      id: "p1",
+      type: "keyword",
+      question: "Qual è il concetto principale del testo?",
+      answer: mainTopic,
+    },
+    {
+      id: "p2",
+      type: definitionPairs.length >= 2 ? "match" : "click-word",
+      question:
+        definitionPairs.length >= 2
+          ? "Abbina i termini alle definizioni."
+          : clickSentence,
+      answer: definitionPairs.length >= 2 ? "matched" : mainKeyword,
+      matchPairs: definitionPairs.length >= 2 ? definitionPairs : undefined,
+      clickWords: definitionPairs.length >= 2 ? undefined : clickWords,
+    },
+    {
+      id: "p3",
+      type: "code",
+      question: `Il codice è il numero di lettere della parola "${mainKeyword}".`,
+      answer: codeAnswer,
+    },
+    {
+      id: "p4",
+      type: "logic",
+      question: blankSentence,
+      answer: mainKeyword,
+    },
+    {
+      id: "p5",
+      type: "path",
+      question: `Senza ______ ${mainKeyword} non può avvenire.`,
+      answer: causeWord,
+    },
   ];
 
   const total = Math.max(1, count);
