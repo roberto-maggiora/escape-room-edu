@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CompletionScreen from "@/components/CompletionScreen";
 import LanguageToggle from "@/components/LanguageToggle";
 import MissionCard from "@/components/MissionCard";
 import PuzzleRenderer from "@/components/PuzzleRenderer";
+import RoomMap from "@/components/RoomMap";
 import { Locale, t } from "@/lib/i18n";
 import { generateRoom } from "@/lib/generator";
 import { roomCopy } from "@/lib/roomCopy";
@@ -33,6 +34,15 @@ const formatTime = (totalSeconds: number) => {
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
+
+const normalize = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export default function RoomExperience({
   config,
@@ -70,7 +80,8 @@ export default function RoomExperience({
     () => puzzles.map(() => false)
   );
   const [flashIndex, setFlashIndex] = useState<number | null>(null);
-  const [activeIndexOverride, setActiveIndexOverride] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("sourceContent");
@@ -96,6 +107,7 @@ export default function RoomExperience({
     setRemainingSeconds(TIME_LIMIT_SECONDS);
     setHasStarted(false);
     setFlashIndex(null);
+    setSelectedIndex(0);
   }, [puzzles]);
 
   const completedCount = results.filter((value) => value === "correct").length;
@@ -110,8 +122,7 @@ export default function RoomExperience({
     return () => clearInterval(interval);
   }, [hasStarted, isComplete]);
 
-  const activeIndex =
-    activeIndexOverride ?? Math.min(completedCount, Math.max(puzzles.length - 1, 0));
+  const activeIndex = Math.min(completedCount, Math.max(puzzles.length - 1, 0));
   const totalHintsUsed = hintsUsed.reduce((sum, value) => sum + value, 0);
   const score = Math.max(remainingSeconds - totalHintsUsed * 15, 0);
 
@@ -129,18 +140,44 @@ export default function RoomExperience({
     if (!hasStarted || index !== activeIndex) return;
     const puzzle = puzzles[index];
     const userAnswer = answers[index] ?? "";
+    const expectedNorm = normalize(puzzle.answer);
+    const userNorm = normalize(userAnswer);
+    const expectedNumber = Number.parseInt(expectedNorm, 10);
+    const userNumber = Number.parseInt(userNorm, 10);
+    const isNumericMatch =
+      Number.isFinite(expectedNumber) &&
+      Number.isFinite(userNumber) &&
+      expectedNumber === userNumber;
+    const isTextMatch =
+      userNorm === expectedNorm ||
+      userNorm.includes(expectedNorm) ||
+      expectedNorm.includes(userNorm);
     const isCorrect =
-      userAnswer.trim().toLowerCase() === puzzle.answer.trim().toLowerCase();
+      puzzle.type === "code"
+        ? isNumericMatch
+        : puzzle.type === "quiz"
+          ? userNorm === expectedNorm
+          : isTextMatch;
     setResults((prev) =>
       prev.map((value, i) => (i === index ? (isCorrect ? "correct" : "wrong") : value))
     );
     if (isCorrect) {
       setFlashIndex(index);
       window.setTimeout(() => setFlashIndex(null), 600);
-      setActiveIndexOverride(index);
-      window.setTimeout(() => setActiveIndexOverride(null), 500);
     }
   };
+
+  useEffect(() => {
+    if (!hasStarted || isComplete) return;
+    if (completedCount < puzzles.length) {
+      setSelectedIndex(completedCount);
+    }
+  }, [completedCount, hasStarted, isComplete, puzzles.length]);
+
+  useEffect(() => {
+    if (!hasStarted) return;
+    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedIndex, hasStarted]);
 
   const handlePrint = () => {
     window.print();
@@ -199,18 +236,36 @@ export default function RoomExperience({
 
   const missionLines = missionText.split("\n");
   const isUrgent = remainingSeconds <= 30;
-
-  useEffect(() => {
-    if (!hasStarted) return;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    const input = document.querySelector<HTMLInputElement>(
-      "[data-puzzle-input=\"true\"]"
-    );
-    input?.focus();
-  }, [activeIndex, hasStarted]);
-
+  const debugEnabled =
+    process.env.NODE_ENV !== "production" &&
+    new URLSearchParams(queryString).get("debug") === "1";
+  const debugPuzzle = puzzles[activeIndex];
+  const debugUserAnswer = answers[activeIndex] ?? "";
+  const debugExpected = debugPuzzle?.answer ?? "";
+  const debugUserNorm = normalize(debugUserAnswer);
+  const debugExpectedNorm = normalize(debugExpected);
+  const debugIsCorrect =
+    debugPuzzle?.type === "code"
+      ? Number.parseInt(debugUserNorm, 10) === Number.parseInt(debugExpectedNorm, 10)
+      : debugPuzzle?.type === "quiz"
+        ? debugUserNorm === debugExpectedNorm
+        : debugUserNorm === debugExpectedNorm ||
+          debugUserNorm.includes(debugExpectedNorm) ||
+          debugExpectedNorm.includes(debugUserNorm);
   return (
     <div className="space-y-6">
+      {debugEnabled && debugPuzzle && (
+        <div className="fixed right-4 top-4 z-50 w-72 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg">
+          <p className="font-semibold text-slate-900">Debug</p>
+          <p>Index: {activeIndex + 1}</p>
+          <p>Type: {debugPuzzle.type}</p>
+          <p>Expected: {debugExpected}</p>
+          <p>User: {debugUserAnswer}</p>
+          <p>ExpectedNorm: {debugExpectedNorm}</p>
+          <p>UserNorm: {debugUserNorm}</p>
+          <p>Match: {debugIsCorrect ? "true" : "false"}</p>
+        </div>
+      )}
       {!hasStarted && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-6 py-10 print:hidden">
           <div className="w-full max-w-xl rounded-3xl bg-white p-8 shadow-xl">
@@ -339,37 +394,77 @@ export default function RoomExperience({
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
             {puzzles.map((puzzle, index) => (
-              <span key={puzzle.id}>
-                {index < completedCount ? "🔓" : "🔒"}
-              </span>
+              <span key={puzzle.id}>{index < completedCount ? "🔓" : "🔒"}</span>
             ))}
           </div>
-          {puzzles[activeIndex] && (
-            <PuzzleRenderer
-              key={puzzles[activeIndex].id}
-              puzzle={puzzles[activeIndex]}
-              index={activeIndex}
-              locale={locale}
-              status="active"
-              answer={answers[activeIndex]}
-              result={results[activeIndex]}
-              onAnswerChange={(value) =>
-                setAnswers((prev) =>
-                  prev.map((entry, i) => (i === activeIndex ? value : entry))
-                )
-              }
-              onCheck={() => handleCheck(activeIndex)}
-              onHint={() => handleHint(activeIndex)}
-              hintsUsed={hintsUsed[activeIndex] ?? 0}
-              maxHints={MAX_HINTS_PER_PUZZLE}
-              hintText={hintText(puzzles[activeIndex])}
-              showHint={showHints[activeIndex] ?? false}
-              lockedLabel={copy.lockedLabel}
-              completedLabel={copy.completedLabel}
-              hintLabel={copy.hintLabel}
-              flash={flashIndex === activeIndex}
-            />
+          <RoomMap
+            total={puzzles.length}
+            selectedIndex={selectedIndex}
+            activeIndex={activeIndex}
+            completedCount={completedCount}
+            flashIndex={flashIndex}
+            onSelect={(index, status) => {
+              if (status === "locked") return;
+              setSelectedIndex(index);
+            }}
+          />
+          {puzzles[selectedIndex] && (
+            <div
+              ref={panelRef}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-700">
+                  Enigma {selectedIndex + 1}
+                </p>
+                <span className="text-xs text-slate-500">
+                  {selectedIndex < completedCount ? "Completato" : "In corso"}
+                </span>
+              </div>
+              <div className="mt-4">
+                <PuzzleRenderer
+                  key={puzzles[selectedIndex].id}
+                  puzzle={puzzles[selectedIndex]}
+                  index={selectedIndex}
+                  locale={locale}
+                  status={selectedIndex < completedCount ? "completed" : "active"}
+                  answer={answers[selectedIndex]}
+                  result={results[selectedIndex]}
+                  onAnswerChange={(value) =>
+                    setAnswers((prev) =>
+                      prev.map((entry, i) => (i === selectedIndex ? value : entry))
+                    )
+                  }
+                  onCheck={() => handleCheck(selectedIndex)}
+                  onHint={() => handleHint(selectedIndex)}
+                  hintsUsed={hintsUsed[selectedIndex] ?? 0}
+                  maxHints={MAX_HINTS_PER_PUZZLE}
+                  hintText={hintText(puzzles[selectedIndex])}
+                  showHint={showHints[selectedIndex] ?? false}
+                  lockedLabel={copy.lockedLabel}
+                  completedLabel={copy.completedLabel}
+                  hintLabel={copy.hintLabel}
+                  flash={flashIndex === selectedIndex}
+                />
+              </div>
+            </div>
           )}
+          <div className="print-only hidden gap-4 print:grid">
+            {puzzles.map((puzzle, index) => (
+              <div
+                key={`print-${puzzle.id}`}
+                className="rounded-2xl border border-slate-200 bg-white p-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Enigma {index + 1}
+                </p>
+                <p className="mt-2 text-sm text-slate-700">{puzzle.question}</p>
+                <div className="mt-3 text-sm text-slate-500">
+                  Risposta: ________________________________
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
     </div>
